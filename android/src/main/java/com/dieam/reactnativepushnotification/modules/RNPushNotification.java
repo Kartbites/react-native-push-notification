@@ -8,11 +8,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
+import android.util.Log;
+
 import androidx.core.app.NotificationManagerCompat;
 
 import com.dieam.reactnativepushnotification.helpers.ApplicationBadgeHelper;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContext;
@@ -21,16 +24,13 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
+import com.google.firebase.messaging.FirebaseMessaging;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
-import android.util.Log;
-
-import com.google.firebase.messaging.FirebaseMessaging;
-
-public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener {
+public class RNPushNotification extends ReactContextBaseJavaModule implements ActivityEventListener, LifecycleEventListener {
     public static final String LOG_TAG = "RNPushNotification";// all logging should use this tag
 
     private RNPushNotificationHelper mRNPushNotificationHelper;
@@ -41,6 +41,7 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         super(reactContext);
 
         reactContext.addActivityEventListener(this);
+        reactContext.addLifecycleEventListener(this);
 
         Application applicationContext = (Application) reactContext.getApplicationContext();
 
@@ -73,12 +74,23 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
         }
         return bundle;
     }
-    public void onNewIntent(Intent intent) {
+
+    public void onNewIntent(Intent intent) {}
+
+    private void handleNewIntent(Intent intent) {
         Bundle bundle = this.getBundleFromIntent(intent);
         if (bundle != null) {
             bundle.putBoolean("foreground", false);
             intent.putExtra("notification", bundle);
             mJsDelivery.notifyNotification(bundle);
+
+            // remove notification related extras and reset intent
+            // so notification is not repeatedly delivered each time
+            // app goes into foreground
+            Intent currIntent = getCurrentActivity().getIntent();
+            currIntent.removeExtra("notification");
+            currIntent.removeExtra("google.message_id");
+            getCurrentActivity().setIntent(currIntent);
         }
     }
 
@@ -227,5 +239,20 @@ public class RNPushNotification extends ReactContextBaseJavaModule implements Ac
     @ReactMethod
     public void registerNotificationActions(ReadableArray actions) {
         registerNotificationsReceiveNotificationActions(actions);
+    }
+
+    @Override
+    public void onHostResume() {
+        handleNewIntent(getCurrentActivity().getIntent());
+    }
+
+    @Override
+    public void onHostPause() {
+
+    }
+
+    @Override
+    public void onHostDestroy() {
+
     }
 }
